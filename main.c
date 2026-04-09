@@ -55,7 +55,7 @@ void message_rx(message_t *m, distance_measurement_t *d) {
     if ((kilo_uid == current_runner) && (current_role != RUNNER)){
         runner_setup();
         current_role = RUNNER;
-    } else if (current_role != STATIONARY) {
+    } else if ((kilo_uid != current_runner) && (current_role != STATIONARY)) {
         stationary_setup();
         current_role = STATIONARY;
     }

@@ -23,9 +23,10 @@ typedef enum {
 } orbit_state_t;
 
 // variables from original orbit code 
-motion_t cur_motion = STOP;
-orbit_state_t orbit_state = ORBIT_NORMAL;
-uint8_t target_runner_dist;
+motion_t cur_motion;
+orbit_state_t orbit_state;
+uint8_t orbit_reverse_direction = 0;
+
 uint8_t new_message;
 distance_measurement_t dist;
 message_t msg;
@@ -40,12 +41,12 @@ uint8_t stop_flag; // flag to stop runner
 uint8_t switch_sent_flag; // flag to initialize switch == set compute new current_runner and set in message
 uint8_t cur_target_kilo_id; // id of bot runner is currently orbiting
 uint8_t current_runner_local; // should be same as current_runner until switch. It doesn't work if I don't separate it into current_runner and current_runner_local. I think it's because I'm getting current_runner from main, but I'm also not really sure still
-uint8_t rotate_flag;
 
 // map of distances between kilobots and front kilobot
-uint16_t first_second_distance = UINT8_MAX;
-uint16_t first_runner_dist = UINT8_MAX;
-uint16_t second_runner_dist = UINT8_MAX;
+uint16_t first_second_distance;
+uint16_t first_runner_dist;
+uint16_t second_runner_dist;
+uint8_t target_runner_dist;
 
 // variables for num_robots = 2
 uint8_t orbit_switch_ct;
@@ -87,9 +88,15 @@ void orbit_normal() {
                 delay(20);
                 set_color(RGB(0,0,0));
             }
-            set_motion(LEFT);
+            if(orbit_reverse_direction)
+                set_motion(RIGHT);
+            else
+                set_motion(LEFT);
         } else{
-            set_motion(RIGHT);
+            if(orbit_reverse_direction)
+                set_motion(LEFT);
+            else
+                set_motion(RIGHT);
         }
     }
 }
@@ -118,6 +125,13 @@ void runner_setup(){
     front_kilo_id = (current_runner - 1 + num_robots) % num_robots;
     second_kilo_id = (front_kilo_id - 1 + num_robots) % num_robots;
 
+    first_second_distance = UINT8_MAX;
+    first_runner_dist = UINT8_MAX;
+    second_runner_dist = UINT8_MAX;
+
+    cur_motion = STOP;
+    orbit_state = ORBIT_NORMAL;
+
     // Set both message parts
     msg.type = NORMAL;
     msg.data[0] = kilo_uid;
@@ -129,14 +143,6 @@ void runner_setup(){
     set_color(RGB(1,1,1));
     delay(20);
     set_color(RGB(0,0,0));
-
-    // if (kilo_uid == current_runner && rotate_flag == 1){
-    //     set_motion(RIGHT);
-    //     set_color(RGB(0,1,0));
-    //     delay(6000);
-    //     set_color(RGB(0,0,0));
-    //     set_motion(STOP);
-    // }
 }
 
 void stop(){
@@ -146,8 +152,8 @@ void stop(){
         msg.data[1] = current_runner_local;
         msg.crc = message_crc(&msg);
         switch_sent_flag = 1;
+        orbit_reverse_direction = !orbit_reverse_direction;
     }
-    rotate_flag = 1;
 }
 
 uint16_t last_error = UINT16_MAX;
@@ -202,12 +208,14 @@ void runner_loop(){
             }
             if(cur_target_kilo_id == front_kilo_id){
                 float sum = (first_second_distance + first_runner_dist)*1.18;
+                // float sum = (first_second_distance + first_runner_dist)*1.15;
                 float error;
                 if(second_runner_dist > sum)
                     error = second_runner_dist - sum;
                 else
                     error = sum - second_runner_dist;                    
                 if((error > last_error) && (error < 10)){
+                // if((error > last_error) && (error < 15)){
                     stop();
                     return;
                 }
@@ -216,7 +224,7 @@ void runner_loop(){
         }
     } 
     else if (target_runner_dist == 0) {
-        set_motion(LEFT);
+        return;
     }
 
     // Orbit state machine
