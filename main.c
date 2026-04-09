@@ -8,7 +8,7 @@ typedef enum {
 } role_t;
 
 role_t current_role;
-uint8_t num_robots = 4;
+uint8_t num_robots = 3;
 uint8_t current_runner = 0;
 uint8_t runner_rx;
 

@@ -2,8 +2,8 @@
 #include "utils.h"
 
 // declare constants
-uint8_t TOOCLOSE_DISTANCE = 33; // 40 mm
-uint8_t DESIRED_DISTANCE = 40; // 60 mm
+uint8_t TOOCLOSE_DISTANCE = 30; // 40 mm
+uint8_t DESIRED_DISTANCE = 46; // 60 mm
 
 extern uint8_t num_robots;
 extern uint8_t current_runner;
@@ -47,6 +47,10 @@ uint16_t first_second_distance;
 uint16_t first_runner_dist;
 uint16_t second_runner_dist;
 uint8_t target_runner_dist;
+
+uint16_t last_error = UINT16_MAX;
+uint32_t last_second_message = 0;
+uint8_t max_second_dist = UINT8_MAX;
 
 // variables for num_robots = 2
 uint8_t orbit_switch_ct;
@@ -132,6 +136,11 @@ void runner_setup(){
     cur_motion = STOP;
     orbit_state = ORBIT_NORMAL;
 
+
+    last_error = UINT16_MAX;
+    last_second_message = 0;
+    max_second_dist = UINT8_MAX;
+
     // Set both message parts
     msg.type = NORMAL;
     msg.data[0] = kilo_uid;
@@ -156,9 +165,7 @@ void stop(){
     }
 }
 
-uint16_t last_error = UINT16_MAX;
-uint32_t last_second_message = 0;
-uint8_t max_second_dist = UINT8_MAX;
+
 
 void runner_loop(){
     if(stop_flag){
@@ -180,7 +187,6 @@ void runner_loop(){
         }
 
         if(rx_kilo_id == front_kilo_id){
-            first_second_distance = dist_val;
             first_runner_dist = dist_val;
         }
 
@@ -196,7 +202,7 @@ void runner_loop(){
                 cur_target_kilo_id = rx_kilo_id;
             }
 
-            if(kilo_ticks - last_second_message > 50){
+            if(kilo_ticks - last_second_message > 32){
                 for(uint8_t i=0;i<3;i++){
                     set_color(RGB(1,1,1));
                     delay(20);
@@ -207,15 +213,16 @@ void runner_loop(){
                 return;
             }
             if(cur_target_kilo_id == front_kilo_id){
-                float sum = (first_second_distance + first_runner_dist)*1.18;
+                float sum = (first_second_distance + first_runner_dist)*1.15;
                 // float sum = (first_second_distance + first_runner_dist)*1.15;
                 float error;
                 if(second_runner_dist > sum)
                     error = second_runner_dist - sum;
                 else
                     error = sum - second_runner_dist;                    
-                if((error > last_error) && (error < 10)){
+                // if((error > last_error) && (error < 10)){
                 // if((error > last_error) && (error < 15)){
+                if((error < 15)){
                     stop();
                     return;
                 }
@@ -255,6 +262,10 @@ void runner_message_rx(message_t *m, distance_measurement_t *d){
     rx_kilo_id = m->data[0];
     new_message = 1;
     dist = *d;
+
+    if(rx_kilo_id == front_kilo_id){
+        first_second_distance = m->data[2];
+    }
 }
 message_t *runner_message_tx(){
     return &msg;
