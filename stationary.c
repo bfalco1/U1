@@ -24,11 +24,12 @@ void stationary_setup(){
     msg_tx.type = NORMAL;
     msg_tx.data[0] = kilo_uid;
     msg_tx.data[1] = current_runner;
-    msg_tx.data[2] = UINT8_MAX;
+    msg_tx.data[2] = UINT8_MAX; // Used for first-second stationary distance
     msg_tx.crc = message_crc(&msg_tx);
 
     front_kilo_id = (current_runner - 1 + num_robots) % num_robots;
     second_kilo_id = (front_kilo_id - 1 + num_robots) % num_robots;
+
     set_color(id_to_color(kilo_uid, num_robots));
     set_motors(0,0);
 }
@@ -44,13 +45,11 @@ void stationary_loop(){
             msg_tx.crc = message_crc(&msg_rx);
         }
 
-        // Set color according to distance from runner
-        // if(msg_rx.data[0] == current_runner){
-        //     set_color(estimate_distance(&dist));
-        // }
+        // Set color according to kilo_uid
         set_color(id_to_color(kilo_uid, num_robots));
     }
 
+    // Have the first robot blink every 2 seconds so we know which one it is
     if((kilo_uid == front_kilo_id) && (kilo_ticks - last_ticks > 64)){
         last_ticks = kilo_ticks;
         set_color(0);

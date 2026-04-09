@@ -2,8 +2,10 @@
 #include "utils.h"
 
 // declare constants
-uint8_t TOOCLOSE_DISTANCE = 30; // 40 mm
-uint8_t DESIRED_DISTANCE = 46; // 60 mm
+
+// This needs to be small to avoid communication range issues
+uint8_t TOOCLOSE_DISTANCE = 30; // 30 mm
+uint8_t DESIRED_DISTANCE = 46; // 46 mm
 
 extern uint8_t num_robots;
 extern uint8_t current_runner;
@@ -35,7 +37,6 @@ message_t msg;
 uint8_t rx_kilo_id; // id of bot that sent message
 uint8_t front_kilo_id; // id of the bot in the front
 uint8_t second_kilo_id; // id of bot behind front one; bot used to know when to stop runner at the front
-uint8_t prev_second_dist; // the previous distance from the runner to the second bot
 uint8_t dist_val; // distance from the message received
 uint8_t stop_flag; // flag to stop runner
 uint8_t switch_sent_flag; // flag to initialize switch == set compute new current_runner and set in message
@@ -48,15 +49,14 @@ uint16_t first_runner_dist;
 uint16_t second_runner_dist;
 uint8_t target_runner_dist;
 
-uint16_t last_error = UINT16_MAX;
-uint32_t last_second_message = 0;
-uint8_t max_second_dist = UINT8_MAX;
+uint16_t last_error;
+uint32_t last_second_message;
 
 // variables for num_robots = 2
 uint8_t orbit_switch_ct;
 
 // function to set new motion
-// UNCHANGED
+// UNCHANGED from orbit-planet lab code
 void set_motion(motion_t new_motion) {
     if (cur_motion != new_motion) {
         cur_motion = new_motion;
@@ -80,12 +80,13 @@ void set_motion(motion_t new_motion) {
     }
 }
 
-// Added num_robots = 2 case orbit switch count
+// Mostly the same as orbit-planet lab code
 void orbit_normal() {
     if (target_runner_dist < TOOCLOSE_DISTANCE) {
         orbit_state = ORBIT_TOOCLOSE;
     } else {
         if (target_runner_dist < DESIRED_DISTANCE){
+            // Added num_robots = 2 case orbit switch count
             if (num_robots == 2 && cur_motion != LEFT){
                 orbit_switch_ct++;
                 set_color(RGB(1,1,1));
@@ -105,7 +106,7 @@ void orbit_normal() {
     }
 }
 
-// UNCHANGED
+// UNCHANGED from orbit planet
 void orbit_tooclose() {
     if (target_runner_dist >= DESIRED_DISTANCE )
         orbit_state = ORBIT_NORMAL;
@@ -120,7 +121,6 @@ void runner_setup(){
     // Reset zero values
     stop_flag = 0;
     switch_sent_flag = 0;
-    prev_second_dist = 0;
     target_runner_dist = 0;
     new_message = 0;
 
@@ -129,6 +129,7 @@ void runner_setup(){
     front_kilo_id = (current_runner - 1 + num_robots) % num_robots;
     second_kilo_id = (front_kilo_id - 1 + num_robots) % num_robots;
 
+    // Distance measures
     first_second_distance = UINT8_MAX;
     first_runner_dist = UINT8_MAX;
     second_runner_dist = UINT8_MAX;
@@ -136,10 +137,8 @@ void runner_setup(){
     cur_motion = STOP;
     orbit_state = ORBIT_NORMAL;
 
-
     last_error = UINT16_MAX;
     last_second_message = 0;
-    max_second_dist = UINT8_MAX;
 
     // Set both message parts
     msg.type = NORMAL;
@@ -156,11 +155,16 @@ void runner_setup(){
 
 void stop(){
     set_motion(STOP);
+
+    // Use a flag to make sure we only increment once
     if (switch_sent_flag == 0){
+        // Update the current runner
         current_runner_local = (current_runner_local + 1) % num_robots;
         msg.data[1] = current_runner_local;
         msg.crc = message_crc(&msg);
         switch_sent_flag = 1;
+
+        // Change orbit direction because the kilobot will be facing the other way
         orbit_reverse_direction = !orbit_reverse_direction;
     }
 }
@@ -186,10 +190,10 @@ void runner_loop(){
             set_color(id_to_color(cur_target_kilo_id, num_robots));
         }
 
+        // Update distances
         if(rx_kilo_id == front_kilo_id){
             first_runner_dist = dist_val;
         }
-
         if(rx_kilo_id == second_kilo_id){
             second_runner_dist = dist_val;
             last_second_message = kilo_ticks;
@@ -201,7 +205,9 @@ void runner_loop(){
                 target_runner_dist = dist_val;
                 cur_target_kilo_id = rx_kilo_id;
             }
-
+            
+            // If we have not recieved a message from the second robot throw and "error"
+            // this can happen if the kilobots are too far apart
             if(kilo_ticks - last_second_message > 32){
                 for(uint8_t i=0;i<3;i++){
                     set_color(RGB(1,1,1));
@@ -209,19 +215,27 @@ void runner_loop(){
                     set_color(0);
                     delay(20);
                 }
-                // stop();
                 return;
             }
+
             if(cur_target_kilo_id == front_kilo_id){
+
+                // Check the difference between the sum of the second-first + first-runner distances
+                // and the second-runner distance
+                // if they are equal the triangle degenerates to a straight line
+
+                // We need a fudge factor here, likely due to the kilobot distance
+                // measurements being slightly off
                 float sum = (first_second_distance + first_runner_dist)*1.15;
-                // float sum = (first_second_distance + first_runner_dist)*1.15;
                 float error;
+
+                // Absolute value
                 if(second_runner_dist > sum)
                     error = second_runner_dist - sum;
                 else
                     error = sum - second_runner_dist;                    
-                // if((error > last_error) && (error < 10)){
-                // if((error > last_error) && (error < 15)){
+
+                // Give a tolerance of 15 on the degenerate triangle
                 if((error < 15)){
                     stop();
                     return;
@@ -244,6 +258,8 @@ void runner_loop(){
             break;
     }
 
+    // Special case for two robots because the degenerate triangle
+    // doesn't work with only two robots
     if((orbit_switch_ct > 6) && 
        (num_robots == 2)){
         set_motion(STOP);
@@ -263,6 +279,7 @@ void runner_message_rx(message_t *m, distance_measurement_t *d){
     new_message = 1;
     dist = *d;
 
+    // We must get the first-second distance from the first kilobot
     if(rx_kilo_id == front_kilo_id){
         first_second_distance = m->data[2];
     }
