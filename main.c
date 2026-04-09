@@ -8,12 +8,12 @@ typedef enum {
 } role_t;
 
 role_t current_role;
-const uint16_t num_robots = 3;
-int current_index;
+uint8_t num_robots = 4;
+uint8_t current_runner = 0;
+uint8_t runner_rx;
 
 void setup() {
-    current_index = kilo_uid;
-    if(current_role % num_robots == 0)
+    if(kilo_uid == 0)
         current_role = RUNNER;
     else
         current_role = STATIONARY;
@@ -23,16 +23,42 @@ void setup() {
 }
 
 void loop() {
-    if(current_role == RUNNER)
+    if(current_role == RUNNER){
         runner_loop();
-    else
-        stationary_loop(current_index);
+    } else{
+        stationary_loop();
+    }
 }
 
 void message_rx(message_t *m, distance_measurement_t *d) {
-    //  TODO: Handle switch runner message
-    //  must increment current index and set roles like in setup
-    //
+    // Every bot's message is two parts: [0] is their own kilo_id and [1] is the kilo_id of what they think is the current runner
+    // Only the current runner can change who the current runner is. Everyone else just rebroadcasts what the current runner is
+    runner_rx = m->data[1];
+
+    // If runner in message just received is not what the given bot thinks it is, then the current runner initialized a switch of runner
+    // Update current runner, then initialize role switch on given bot. This includes running the respective setup.
+    if (runner_rx != current_runner){
+        current_runner = runner_rx;
+        if (kilo_uid == current_runner){
+            current_role = RUNNER;
+            runner_setup();
+            set_color(RGB(0,1,0));
+            delay(20);
+            set_color(RGB(0,0,0));
+        } else {
+            stationary_setup();
+            current_role = STATIONARY;
+        }
+    }
+
+    // Continuously check and update role
+    if ((kilo_uid == current_runner) && (current_role != RUNNER)){
+        runner_setup();
+        current_role = RUNNER;
+    } else if (current_role != STATIONARY) {
+        stationary_setup();
+        current_role = STATIONARY;
+    }
 
     if(current_role == RUNNER)
         runner_message_rx(m, d);
@@ -42,10 +68,11 @@ void message_rx(message_t *m, distance_measurement_t *d) {
 
 message_t *message_tx(){
     if(current_role == RUNNER)
-        runner_message_tx();
+        return runner_message_tx();
     else
-        stationary_message_tx();
+        return stationary_message_tx();
 }
+
 void message_tx_success(){
     if(current_role == RUNNER)
         runner_message_tx_success();

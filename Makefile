@@ -37,7 +37,7 @@ build:
 	mkdir -p $@
 
 build/%.elf: %.c $(KILOLIB)  | build
-	$(CC) $(CFLAGS) -o $@ $< runner.c stationary.c $(KILOLIB)
+	$(CC) $(CFLAGS) -o $@ $< runner.c stationary.c utils.c $(KILOLIB)
 
 define LABS_TEMPLATE
 <div class="container">
